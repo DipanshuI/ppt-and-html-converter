@@ -95,34 +95,38 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
         ] if os.path.exists(pdf_out_dir) else []
 
         
-        if res.returncode == 0 and pdf_files:
+                if res.returncode == 0 and pdf_files:
             pdf_path = os.path.join(pdf_out_dir, pdf_files[0])
+
             try:
                 from pdf2image import convert_from_path
+
                 # dpi=130 keeps RAM usage under 100MB to fit Render's 512MB free tier
                 images = convert_from_path(pdf_path, dpi=130)
                 step_bgs_by_slide = {}
-                
+
                 for idx, img in enumerate(images):
                     slide_num = idx + 1
                     img_path = os.path.join(output_slides_dir, f"slide_{slide_num}_step_0.png")
                     img.save(img_path, "PNG", optimize=True)
-                    
+
                     with open(img_path, "rb") as f:
                         png_b64 = base64.b64encode(f.read()).decode("utf-8")
-                    
+
                     step_bgs_by_slide[idx] = [png_b64]
+
                     if os.path.exists(img_path):
                         os.remove(img_path)
 
                 shutil.rmtree(pdf_out_dir, ignore_errors=True)
                 shutil.rmtree(temp_session, ignore_errors=True)
+
                 log_success(f"Rendered {len(images)} slides successfully via LibreOffice.")
                 return step_bgs_by_slide
 
             except Exception as e:
-    shutil.rmtree(temp_session, ignore_errors=True)
-    log_error(f"pdf2image rendering error: {e}")
+                shutil.rmtree(temp_session, ignore_errors=True)
+                log_error(f"pdf2image rendering error: {e}")
 
         # Fallback to vector slide placeholders if LibreOffice PDF is unreadable
         log_info("Applying vector fallback for slide rendering...")

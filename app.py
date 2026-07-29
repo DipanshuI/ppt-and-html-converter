@@ -2,6 +2,7 @@
 import os
 import sys
 import json
+import tempfile
 import base64
 import zipfile
 import subprocess
@@ -52,19 +53,41 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
         cmd_name = libreoffice_cmd or "libreoffice"
         
         # 1. Convert PPTX to PDF using LibreOffice with isolated profile in /tmp
-        pdf_out_dir = os.path.join(TEMP_DIR, "pdf_export")
-        profile_dir = os.path.join(TEMP_DIR, "LibreOffice_Profile")
-        if os.path.exists(pdf_out_dir):
-            shutil.rmtree(pdf_out_dir, ignore_errors=True)
-        os.makedirs(pdf_out_dir, exist_ok=True)
-        os.makedirs(profile_dir, exist_ok=True)
+        temp_session = tempfile.mkdtemp(prefix="ppt_convert_")
 
-        res = subprocess.run(
-            [cmd_name, "-env:UserInstallation=file://" + profile_dir, "--headless", "--convert-to", "pdf", pptx_file_path, "--outdir", pdf_out_dir],
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
+pdf_out_dir = os.path.join(temp_session, "pdf_export")
+profile_dir = os.path.join(temp_session, "LibreOffice_Profile")
+
+os.makedirs(pdf_out_dir, exist_ok=True)
+os.makedirs(profile_dir, exist_ok=True)
+
+        try:
+    res = subprocess.run(
+        [
+            cmd_name,
+            "--headless",
+            "--nologo",
+            "--nodefault",
+            "--nofirststartwizard",
+            "--nolockcheck",
+            "--norestore",
+            "-env:UserInstallation=file://" + profile_dir,
+            "--convert-to",
+            "pdf",
+            pptx_file_path,
+            "--outdir",
+            pdf_out_dir
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300
+    )
+
+except subprocess.TimeoutExpired as e:
+    log_error("LibreOffice timed out after 300 seconds")
+    log_error(f"stdout: {e.stdout}")
+    log_error(f"stderr: {e.stderr}")
+    raise
 
         pdf_files = [f for f in os.listdir(pdf_out_dir) if f.endswith(".pdf")] if os.path.exists(pdf_out_dir) else []
         
@@ -89,6 +112,7 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
                         os.remove(img_path)
 
                 shutil.rmtree(pdf_out_dir, ignore_errors=True)
+                shutil.rmtree(temp_session, ignore_errors=True)
                 log_success(f"Rendered {len(images)} slides successfully via LibreOffice.")
                 return step_bgs_by_slide
 

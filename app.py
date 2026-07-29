@@ -80,11 +80,11 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
                 ],
                 capture_output=True,
                 text=True,
-                timeout=300
+                timeout=3600
             )
 
         except subprocess.TimeoutExpired as e:
-            log_error("LibreOffice timed out after 300 seconds")
+            log_error("LibreOffice timed out after 3600 seconds")
             log_error(f"stdout: {e.stdout}")
             log_error(f"stderr: {e.stderr}")
             raise

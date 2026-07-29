@@ -44,7 +44,6 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
     """
     os.makedirs(output_slides_dir, exist_ok=True)
 
-    # Check if running on Linux/Docker or LibreOffice is available
     is_windows = (os.name == 'nt')
     libreoffice_cmd = shutil.which("libreoffice") or shutil.which("soffice")
 
@@ -52,11 +51,9 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
         log_info("Rendering slide layouts using LibreOffice Headless & pdf2image...")
         cmd_name = libreoffice_cmd or "libreoffice"
 
-        # 1. Convert PPTX to PDF using LibreOffice with isolated profile
         temp_session = tempfile.mkdtemp(prefix="ppt_convert_")
         pdf_out_dir = os.path.join(temp_session, "pdf_export")
         profile_dir = os.path.join(temp_session, "LibreOffice_Profile")
-
         os.makedirs(pdf_out_dir, exist_ok=True)
         os.makedirs(profile_dir, exist_ok=True)
 
@@ -88,26 +85,19 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
             log_error(f"stderr: {e.stderr}")
             raise
 
-        pdf_files = [
-            f for f in os.listdir(pdf_out_dir)
-            if f.endswith(".pdf")
-        ] if os.path.exists(pdf_out_dir) else []
+        pdf_files = [f for f in os.listdir(pdf_out_dir) if f.endswith(".pdf")] if os.path.exists(pdf_out_dir) else []
 
         if res.returncode == 0 and pdf_files:
             pdf_path = os.path.join(pdf_out_dir, pdf_files[0])
 
             try:
                 from pdf2image import convert_from_path
-
                 images = convert_from_path(pdf_path, dpi=130)
                 step_bgs_by_slide = {}
 
                 for idx, img in enumerate(images):
                     slide_num = idx + 1
-                    img_path = os.path.join(
-                        output_slides_dir,
-                        f"slide_{slide_num}_step_0.png"
-                    )
+                    img_path = os.path.join(output_slides_dir, f"slide_{slide_num}_step_0.png")
                     img.save(img_path, "PNG", optimize=True)
 
                     with open(img_path, "rb") as f:
@@ -120,10 +110,7 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
 
                 shutil.rmtree(pdf_out_dir, ignore_errors=True)
                 shutil.rmtree(temp_session, ignore_errors=True)
-
-                log_success(
-                    f"Rendered {len(images)} slides successfully via LibreOffice."
-                )
+                log_success(f"Rendered {len(images)} slides successfully via LibreOffice.")
                 return step_bgs_by_slide
 
             except Exception as e:
@@ -132,13 +119,52 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
 
         log_info("Applying vector fallback for slide rendering...")
         shutil.rmtree(temp_session, ignore_errors=True)
-        step_bgs_by_slide = {}
-        for idx in range(40):
-            step_bgs_by_slide[idx] = [""]
-        return step_bgs_by_slide
+        return {idx:[""] for idx in range(40)}
 
     else:
-        # Fallback for Windows local PowerPoint COM bridge...
+        log_info("Rendering slide layouts via Windows PowerPoint COM bridge...")
+        ps_script = f"""
+$ErrorActionPreference = 'Stop'
+$pptxFilePath = '{pptx_file_path.replace("\\\\","\\\\\\\\")}'
+$slidesFolder = '{output_slides_dir.replace("\\\\","\\\\\\\\")}'
+
+Get-Process POWERPNT -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+
+$ppt = New-Object -ComObject PowerPoint.Application
+$ppt.Visible = 1
+$ppt.WindowState = 2
+
+$pres = $ppt.Presentations.Open($pptxFilePath, [Microsoft.Office.Core.MsoTristate]::msoFalse, [Microsoft.Office.Core.MsoTristate]::msoFalse, [Microsoft.Office.Core.MsoTristate]::msoTrue)
+$totalSlides = $pres.Slides.Count
+
+$origWidth = $pres.PageSetup.SlideWidth
+$origHeight = $pres.PageSetup.SlideHeight
+$exportWidth = [int]($origWidth * 2.0)
+$exportHeight = [int]($origHeight * 2.0)
+
+$resObj = @{}
+
+for ($i = 1; $i -le $totalSlides; $i++) {{
+    $slide = $pres.Slides.Item($i)
+    $outputPath = Join-Path $slidesFolder "slide_${{i}}_step_0.png"
+    $slide.Export($outputPath, "PNG", $exportWidth, $exportHeight)
+    $pngBytes = [System.IO.File]::ReadAllBytes($outputPath)
+    $resObj[($i - 1)] = @([Convert]::ToBase64String($pngBytes))
+    Remove-Item $outputPath -Force
+}}
+
+$pres.Close()
+$ppt.Quit()
+$resObj | ConvertTo-Json -Compress
+"""
+        res = subprocess.run(["powershell","-ExecutionPolicy","Bypass","-Command",ps_script],capture_output=True,text=True)
+        if res.returncode != 0:
+            raise RuntimeError(f"PowerPoint COM conversion failed: {res.stderr}")
+        raw_json = json.loads(res.stdout.strip())
+        return {int(k): v for k, v in raw_json.items()}
+
+
 def convert_pptx_to_html(pptx_file_path, pptx_name):
     global active_presentation
     active_presentation["name"] = pptx_name

@@ -52,7 +52,7 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
         log_info("Rendering slide layouts using LibreOffice Headless & pdf2image...")
         cmd_name = libreoffice_cmd or "libreoffice"
         
-                # 1. Convert PPTX to PDF using LibreOffice with isolated profile
+        # 1. Convert PPTX to PDF using LibreOffice with isolated profile
         temp_session = tempfile.mkdtemp(prefix="ppt_convert_")
 
         pdf_out_dir = os.path.join(temp_session, "pdf_export")
@@ -95,7 +95,7 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
         ] if os.path.exists(pdf_out_dir) else []
 
         
-                if res.returncode == 0 and pdf_files:
+        if res.returncode == 0 and pdf_files:
             pdf_path = os.path.join(pdf_out_dir, pdf_files[0])
 
             try:

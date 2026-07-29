@@ -52,44 +52,48 @@ def render_pptx_slides_to_png(pptx_file_path, output_slides_dir):
         log_info("Rendering slide layouts using LibreOffice Headless & pdf2image...")
         cmd_name = libreoffice_cmd or "libreoffice"
         
-        # 1. Convert PPTX to PDF using LibreOffice with isolated profile in /tmp
+                # 1. Convert PPTX to PDF using LibreOffice with isolated profile
         temp_session = tempfile.mkdtemp(prefix="ppt_convert_")
 
-pdf_out_dir = os.path.join(temp_session, "pdf_export")
-profile_dir = os.path.join(temp_session, "LibreOffice_Profile")
+        pdf_out_dir = os.path.join(temp_session, "pdf_export")
+        profile_dir = os.path.join(temp_session, "LibreOffice_Profile")
 
-os.makedirs(pdf_out_dir, exist_ok=True)
-os.makedirs(profile_dir, exist_ok=True)
+        os.makedirs(pdf_out_dir, exist_ok=True)
+        os.makedirs(profile_dir, exist_ok=True)
 
         try:
-    res = subprocess.run(
-        [
-            cmd_name,
-            "--headless",
-            "--nologo",
-            "--nodefault",
-            "--nofirststartwizard",
-            "--nolockcheck",
-            "--norestore",
-            "-env:UserInstallation=file://" + profile_dir,
-            "--convert-to",
-            "pdf",
-            pptx_file_path,
-            "--outdir",
-            pdf_out_dir
-        ],
-        capture_output=True,
-        text=True,
-        timeout=300
-    )
+            res = subprocess.run(
+                [
+                    cmd_name,
+                    "--headless",
+                    "--nologo",
+                    "--nodefault",
+                    "--nofirststartwizard",
+                    "--nolockcheck",
+                    "--norestore",
+                    "-env:UserInstallation=file://" + profile_dir,
+                    "--convert-to",
+                    "pdf",
+                    pptx_file_path,
+                    "--outdir",
+                    pdf_out_dir
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
 
-except subprocess.TimeoutExpired as e:
-    log_error("LibreOffice timed out after 300 seconds")
-    log_error(f"stdout: {e.stdout}")
-    log_error(f"stderr: {e.stderr}")
-    raise
+        except subprocess.TimeoutExpired as e:
+            log_error("LibreOffice timed out after 300 seconds")
+            log_error(f"stdout: {e.stdout}")
+            log_error(f"stderr: {e.stderr}")
+            raise
 
-        pdf_files = [f for f in os.listdir(pdf_out_dir) if f.endswith(".pdf")] if os.path.exists(pdf_out_dir) else []
+        pdf_files = [
+            f for f in os.listdir(pdf_out_dir)
+            if f.endswith(".pdf")
+        ] if os.path.exists(pdf_out_dir) else []
+
         
         if res.returncode == 0 and pdf_files:
             pdf_path = os.path.join(pdf_out_dir, pdf_files[0])
@@ -117,7 +121,8 @@ except subprocess.TimeoutExpired as e:
                 return step_bgs_by_slide
 
             except Exception as e:
-                log_error(f"pdf2image rendering error: {e}")
+    shutil.rmtree(temp_session, ignore_errors=True)
+    log_error(f"pdf2image rendering error: {e}")
 
         # Fallback to vector slide placeholders if LibreOffice PDF is unreadable
         log_info("Applying vector fallback for slide rendering...")
